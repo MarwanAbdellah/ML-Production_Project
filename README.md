@@ -1,85 +1,75 @@
-# ML Production Project — Breast Cancer Classification
+# 🎗️ ML Production Project — Breast Cancer Classification
 
-## Project goal
+[![Python](https://img.shields.io/badge/Python-3.14-blue.svg)](https://www.python.org/)
+[![scikit-learn](https://img.shields.io/badge/scikit--learn-1.9-orange.svg)](https://scikit-learn.org/)
+[![imbalanced-learn](https://img.shields.io/badge/imbalanced--learn-0.14-purple.svg)](https://imbalanced-learn.org/)
+[![uv](https://img.shields.io/badge/uv-managed-green.svg)](https://docs.astral.sh/uv/)
+[![Ruff](https://img.shields.io/badge/lint-ruff-E6001A.svg)](https://docs.astral.sh/ruff/)
+[![Black](https://img.shields.io/badge/format-black-000000.svg)](https://github.com/psf/black)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Turn a notebook experiment into a clean, reproducible Python application. The project
-loads the Breast Cancer Wisconsin dataset, trains a classification pipeline that
-predicts whether a tumor is **malignant** or **benign**, evaluates it, saves the fitted
-pipeline, and serves predictions by reloading that artifact — with no retraining.
+**ML Production Project** is a production-ready **binary classification** application that predicts whether a breast tumor is **malignant** or **benign** from 30 cytological measurements. The project began as an experimentation notebook (`notebooks/01_exploration.ipynb`) and was refactored into a clean, reproducible Python package: environment-driven configuration, structured logging, a leakage-safe scikit-learn pipeline saved with joblib, and a `train` / `predict` CLI that serves the saved artifact without retraining.
 
-## Dataset
+---
 
-[Breast Cancer Wisconsin (Diagnostic)](https://www.kaggle.com/datasets/yasserh/breast-cancer-dataset)
-(`notebooks/kaggle/breast-cancer.csv`):
+## ✨ Key Features
 
-- 569 rows × 32 columns
-- Target: `diagnosis` — `M` (malignant, 212) / `B` (benign, 357)
-- 30 numeric features (mean, standard error, and worst values of tumor measurements)
-- `id` is dropped (identifier, not a feature); no missing values
+### 📓 1. Notebook-First Experimentation → Production Modules
+- Stage A lives in `notebooks/01_exploration.ipynb`: EDA, null/outlier checks, class distribution, 7-model comparison, and metric plots — the full experimentation record.
+- Stage B moves only the tested logic into the `production_app/` package (data, preprocessing, training, evaluation, model service, config, logging) — the modules are the source of truth; the notebook is never imported by the app.
 
-## ML pipeline
+### 🛡️ 2. Leakage-Safe Training Pipeline
+- A single `imblearn.pipeline.Pipeline` chains **SMOTETomek → StandardScaler → Logistic Regression**.
+- The sampler and scaler only learn during `fit` on training data; `predict` skips the sampler and applies the already-fitted transform — no test data ever leaks into training.
+- `SMOTETomek` rebalances the 63/37 class imbalance (benign/malignant) inside the training fold only.
 
-```
-Load CSV → Validate columns → Train/test split (80/20, stratified, seeded)
-         → imblearn Pipeline fit: SMOTETomek → StandardScaler → LogisticRegression
-         → Evaluate on held-out test set → Save pipeline (joblib)
-         → Reload artifact → Predict (no retraining)
-```
+### ⚙️ 3. Config-Driven Train / Predict CLI
+- Every runtime setting (dataset path, model artifact path, log level, environment, test size, random seed) is read from environment variables via `config.py` — nothing is hardcoded.
+- `uv run run.py train` fits, evaluates, saves the pipeline, and verifies the save/reload roundtrip.
+- `uv run run.py predict` loads the saved artifact and predicts — **no retraining**, ever.
 
-- **Leakage prevention:** the entire pipeline lives in a single
-  `imblearn.pipeline.Pipeline`. SMOTETomek (oversampling + Tomek-link cleaning) and
-  `StandardScaler` only learn during `fit` on training data; `predict` skips the
-  sampler and applies the already-fitted scaler + model.
-- **Class balancing:** the dataset is imbalanced (≈63/37); SMOTETomek balances the
-  training fold only, so the test set keeps its natural distribution.
+### 🧰 4. Reproducible & Code-Quality Enforced
+- **uv** manages Python 3.14, dependencies, and the lockfile (`uv.lock` committed) — one `uv sync` reproduces the exact environment.
+- **Ruff**, **Black**, and **pre-commit** hooks are configured and passing; all operational events go through `logging` (no `print`).
 
-## Model choice
+---
 
-**Logistic Regression** — the assignment asks for one straightforward model, and it is
-the notebook's primary baseline. It trains in well under a second, is easy to
-interpret, and reaches ~98% accuracy on this dataset. The notebook
-(`notebooks/01_exploration.ipynb`) additionally compares Random Forest, XGBoost,
-Decision Tree, Naive Bayes, KNN, and SVC as the experimentation record; the production
-app ships only the Logistic Regression pipeline.
+## 📖 From Notebook to Production
 
-## Folder structure
+| Stage | Where | What |
+|-------|-------|------|
+| **Stage A — Experiment** | `notebooks/01_exploration.ipynb` | Load & inspect the dataset, encode the target, visualize distributions/outliers/correlations, train 7 classifiers (Logistic Regression, Random Forest, XGBoost, Decision Tree, Naive Bayes, KNN, SVC), compare metrics, save baseline pickles. |
+| **Stage B — Engineer** | `production_app/` + `run.py` | Refactor the validated workflow into typed, logged, config-driven modules; ship **one** straightforward model (Logistic Regression) behind a joblib-saved pipeline; run training and prediction independently of the notebook. |
 
-```
-ml-production-project/
-|-- notebooks/
-|   `-- 01_exploration.ipynb   # Stage A: exploration, EDA, model comparison
-|-- production_app/
-|   |-- __init__.py
-|   |-- config.py              # settings from environment variables
-|   |-- logging_config.py      # one shared logging setup
-|   |-- data.py                # load, validate, split
-|   |-- preprocessing.py       # SMOTETomek + StandardScaler + LogisticRegression pipeline
-|   |-- training.py            # fit
-|   |-- evaluation.py          # metrics + report
-|   |-- model_service.py       # joblib save / load / predict
-|   `-- main.py                # orchestration
-|-- models/
-|   |-- model_pipeline.joblib  # saved fitted pipeline (recreate with train)
-|   `-- joblib_models/         # model pickles produced by the notebook
-|-- run.py                     # entry point: train | predict
-|-- .env.example
-|-- .gitignore
-|-- .pre-commit-config.yaml
-|-- pyproject.toml
-|-- uv.lock
-`-- README.md
+---
+
+## 🏗️ ML Pipeline Architecture
+
+```mermaid
+graph TD
+    A[Breast Cancer CSV - 569 rows] --> B[Load & Validate Columns]
+    B --> C[Stratified Train/Test Split - 80/20, seed 42]
+    C --> D[SMOTETomek - rebalance train fold only]
+    D --> E[StandardScaler - fit on train only]
+    E --> F[Logistic Regression - fit]
+    F --> G[Evaluate on Held-Out Test - accuracy / precision / recall / F1]
+    G --> H[Save fitted pipeline - joblib]
+    H --> I[Reload artifact]
+    I --> J[Predict - no retraining]
 ```
 
-## Evaluation results
+---
+
+## 📊 Evaluation Results
 
 Held-out test set (20%, stratified, `RANDOM_STATE=42`):
 
-| Metric   | Value  |
-|----------|--------|
-| Accuracy | 0.9737 |
+| Metric | Value |
+|--------|-------|
+| **Accuracy** | **0.9737** |
 | Precision (malignant) | 0.9756 |
-| Recall (malignant)    | 0.9524 |
-| F1 (malignant)        | 0.9639 |
+| Recall (malignant) | 0.9524 |
+| F1 (malignant) | 0.9639 |
 
 Confusion matrix (`[[TN, FP], [FN, TP]]`):
 
@@ -88,69 +78,140 @@ Confusion matrix (`[[TN, FP], [FN, TP]]`):
  [ 2 40]]
 ```
 
-One false positive and two false negatives out of 114 test samples.
+One false positive and two false negatives out of 114 test samples — recall on the malignant class is the clinically weighted number, and it is explicitly reported and logged on every training run.
 
-## Setup
+---
 
-Prerequisites: [uv](https://docs.astral.sh/uv/) (installs and manages Python 3.14
-for you) and Git.
+## 🛠️ Technology Stack
 
+### Core
+- **Language**: Python 3.14
+- **Environment & packaging**: [uv](https://docs.astral.sh/uv/) (`.venv` + `uv.lock`)
+
+### ML / Data
+- **Model**: scikit-learn Logistic Regression
+- **Pipeline**: imbalanced-learn `Pipeline` (SMOTETomek + StandardScaler)
+- **Serialization**: joblib (fitted pipeline artifact)
+- **Data**: pandas, numpy — [Breast Cancer Wisconsin (Diagnostic)](https://www.kaggle.com/datasets/yasserh/breast-cancer-dataset), 569 rows × 32 columns, no missing values
+
+### Experimentation (notebook only)
+- Jupyter / ipykernel, Plotly, Seaborn, Matplotlib, XGBoost (model comparison)
+
+### Code Quality
+- Ruff (lint), Black (format), pre-commit hooks
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+- **[uv](https://docs.astral.sh/uv/)** (installs and manages Python 3.14 automatically)
+- **Git**
+
+### 1. Repository Setup
 ```bash
-git clone <repository-url>
+git clone https://github.com/MarwanAbdellah/ML-Production_Project.git
 cd ML-Production_Project
-uv sync                 # creates .venv, installs dependencies from uv.lock
 ```
 
-Optional configuration — copy the example and edit values:
+### 2. Install Dependencies
+```bash
+uv sync
+```
 
+### 3. Configure Environment
+Copy the example environment file and edit values if needed (the app runs on safe defaults without a `.env`):
 ```bash
 cp .env.example .env
 ```
+```env
+DATA_PATH=notebooks/kaggle/breast-cancer.csv
+MODEL_PATH=models/model_pipeline.joblib
+LOG_LEVEL=INFO
+ENVIRONMENT=development
+TEST_SIZE=0.2
+RANDOM_STATE=42
+```
 
-The app runs with safe defaults even without a `.env` file.
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `DATA_PATH` | `notebooks/kaggle/breast-cancer.csv` | Input dataset location |
+| `MODEL_PATH` | `models/model_pipeline.joblib` | Saved pipeline artifact |
+| `LOG_LEVEL` | `INFO` | Logging verbosity |
+| `ENVIRONMENT` | `development` | Environment label (logged) |
+| `TEST_SIZE` | `0.2` | Test fraction of the split |
+| `RANDOM_STATE` | `42` | Seed for split + SMOTETomek |
 
-## Configuration
-
-| Variable       | Default                          | Purpose                          |
-|----------------|----------------------------------|----------------------------------|
-| `DATA_PATH`    | `notebooks/kaggle/breast-cancer.csv` | Input dataset location       |
-| `MODEL_PATH`   | `models/model_pipeline.joblib`   | Saved pipeline artifact          |
-| `LOG_LEVEL`    | `INFO`                           | Logging verbosity                |
-| `ENVIRONMENT`  | `development`                    | Free-form environment label      |
-| `TEST_SIZE`    | `0.2`                            | Test fraction of the split       |
-| `RANDOM_STATE` | `42`                             | Seed for split + SMOTETomek      |
-
-## Usage
-
-Train, evaluate, and save the pipeline:
-
+### 4. Train
 ```bash
 uv run run.py train
 ```
+Loads the dataset, splits, fits the pipeline, logs metrics + classification report + confusion matrix, saves `models/model_pipeline.joblib`, and verifies the save/reload roundtrip.
 
-Predict with the saved artifact (loads the model, predicts the first 5 rows of the
-dataset; no retraining happens):
-
+### 5. Predict with the Saved Artifact
 ```bash
+# Default: predict on 5 sample rows from the dataset
 uv run run.py predict
-```
 
-Predict on your own CSV with the same feature columns:
-
-```bash
+# Or on your own CSV with the same 30 feature columns
 uv run run.py predict --input path/to/data.csv
 ```
+Prediction loads the saved pipeline and runs inference — **no retraining**.
 
-A missing artifact or invalid input is logged as an error and exits with code 1.
+---
 
-## Code quality
+## 🧪 Testing & Verification
 
-```bash
-uv run ruff check .              # lint (E, F, I rules)
-uv run black .                   # format
-uv run pre-commit run --all-files  # run all configured hooks
+There is no separate test suite; verify the system with these checks:
+
+1. `uv run run.py train` — exits 0, logs evaluation metrics (accuracy ≈ 0.97), and reports `Saved pipeline to models\model_pipeline.joblib` followed by `Save/reload roundtrip verified`.
+2. `uv run run.py predict` — logs `Loaded pipeline from ...` and prints 5 predictions; no training logs appear.
+3. Failure path: delete or rename `models/model_pipeline.joblib`, then `uv run run.py predict` — logs `Model artifact not found` and exits with code 1.
+4. Code quality: `uv run ruff check .`, `uv run black --check .`, and `uv run pre-commit run --all-files` all pass.
+5. Reproducibility: run `train` twice — identical metrics both times (everything is seeded).
+
+---
+
+## 📁 Project Structure
+
+```text
+ML-Production_Project/
+├── notebooks/
+│   ├── 01_exploration.ipynb        # Stage A: EDA, 7-model comparison, validation record
+│   └── kaggle/
+│       └── breast-cancer.csv       # Breast Cancer Wisconsin dataset (569 x 32)
+├── production_app/                 # Stage B: production package (source of truth)
+│   ├── __init__.py                 # Package marker
+│   ├── config.py                   # Env-driven settings (paths, seed, log level)
+│   ├── logging_config.py           # One shared logging setup + get_logger
+│   ├── data.py                     # Load, validate, feature prep, stratified split
+│   ├── preprocessing.py            # SMOTETomek -> StandardScaler -> LogReg pipeline
+│   ├── training.py                 # Fit with timing + logging
+│   ├── evaluation.py               # Accuracy / precision / recall / F1 + report
+│   ├── model_service.py            # joblib save / load / predict
+│   └── main.py                     # run_training() / run_prediction() orchestration
+├── models/
+│   ├── model_pipeline.joblib       # Saved fitted pipeline (recreated by `train`)
+│   └── joblib_models/              # Baseline pickles from the notebook
+├── run.py                          # CLI entry point: train | predict [--input]
+├── .env.example                    # Environment variable template
+├── .gitignore                      # Ignores .venv, .env, caches, checkpoints
+├── .pre-commit-config.yaml         # ruff + black + file-check hooks
+├── pyproject.toml                  # Dependencies, dev tools, tool config
+├── uv.lock                         # Locked reproducible environment
+└── README.md                       # This file
 ```
 
-Pre-commit runs `ruff`, `black`, and basic file checks (trailing whitespace,
-end-of-file, YAML/TOML validity) on every commit after a one-time
-`uv run pre-commit install`.
+---
+
+## 👤 Author
+
+**Marwan Abdellah**
+- **GitHub**: [@MarwanAbdellah](https://github.com/MarwanAbdellah)
+- **LinkedIn**: [Marwan Abdellah](https://www.linkedin.com/in/marwan-abdellah/)
+
+---
+
+## 📄 License
+
+Distributed under the MIT License. See [`LICENSE`](LICENSE) for more information.
