@@ -8,7 +8,7 @@ from production_app.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-REQUIRED_COLUMNS = {"diagnosis", "radius_mean"}
+REQUIRED_COLUMNS = {"radius_mean"}
 
 
 def load_dataset(path: Path | None = None) -> pd.DataFrame:
@@ -32,6 +32,9 @@ def prepare_features(df: pd.DataFrame) -> pd.DataFrame:
 def split_data(
     df: pd.DataFrame,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
+    if "diagnosis" not in df.columns:
+        logger.error("Training data must contain a 'diagnosis' column")
+        raise ValueError("missing required columns: ['diagnosis']")
     X = prepare_features(df)
     y = (df["diagnosis"] == "M").astype(int)
     logger.info(
@@ -40,5 +43,9 @@ def split_data(
         config.RANDOM_STATE,
     )
     return train_test_split(
-        X, y, test_size=config.TEST_SIZE, random_state=config.RANDOM_STATE
+        X,
+        y,
+        test_size=config.TEST_SIZE,
+        random_state=config.RANDOM_STATE,
+        stratify=y,
     )

@@ -20,7 +20,7 @@ pipeline, and serves predictions by reloading that artifact — with no retraini
 ## ML pipeline
 
 ```
-Load CSV → Validate columns → Train/test split (80/20, seeded)
+Load CSV → Validate columns → Train/test split (80/20, stratified, seeded)
          → imblearn Pipeline fit: SMOTETomek → StandardScaler → LogisticRegression
          → Evaluate on held-out test set → Save pipeline (joblib)
          → Reload artifact → Predict (no retraining)
@@ -72,23 +72,23 @@ ml-production-project/
 
 ## Evaluation results
 
-Held-out test set (20%, `RANDOM_STATE=42`):
+Held-out test set (20%, stratified, `RANDOM_STATE=42`):
 
 | Metric   | Value  |
 |----------|--------|
-| Accuracy | 0.9825 |
-| Precision (malignant) | 0.9767 |
-| Recall (malignant)    | 0.9767 |
-| F1 (malignant)        | 0.9767 |
+| Accuracy | 0.9737 |
+| Precision (malignant) | 0.9756 |
+| Recall (malignant)    | 0.9524 |
+| F1 (malignant)        | 0.9639 |
 
 Confusion matrix (`[[TN, FP], [FN, TP]]`):
 
 ```
-[[70  1]
- [ 1 42]]
+[[71  1]
+ [ 2 40]]
 ```
 
-One false positive and one false negative out of 114 test samples.
+One false positive and two false negatives out of 114 test samples.
 
 ## Setup
 
