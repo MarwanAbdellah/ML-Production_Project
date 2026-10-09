@@ -1,0 +1,37 @@
+[project]
+name = "ml-production-project"
+version = "0.1.0"
+description = "Breast cancer classification from notebook to reproducible production Python app"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "imblearn>=0.0",
+    "ipykernel>=7.4.0",
+    "joblib>=1.6.0",
+    "matplotlib>=3.11.2",
+    "nbformat>=4.2.0",
+    "numpy>=2.5.3",
+    "pandas>=3.0.6",
+    "plotly>=7.1.0",
+    "python-dotenv>=1.2.4",
+    "scikit-learn>=1.9.1",
+    "seaborn>=0.13.2",
+    "xgboost>=3.4.1",
+]
+
+[dependency-groups]
+dev = [
+    "black>=26.10.0",
+    "pre-commit>=4.6.2",
+    "ruff>=0.16.10",
+]
+
+[tool.black]
+line-length = 88
+
+[tool.ruff]
+line-length = 88
+extend-exclude = ["notebooks"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
