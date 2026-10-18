@@ -4,11 +4,15 @@
 [![scikit-learn](https://img.shields.io/badge/scikit--learn-1.9-orange.svg)](https://scikit-learn.org/)
 [![imbalanced-learn](https://img.shields.io/badge/imbalanced--learn-0.14-purple.svg)](https://imbalanced-learn.org/)
 [![uv](https://img.shields.io/badge/uv-managed-green.svg)](https://docs.astral.sh/uv/)
+[![FastAPI](https://img.shields.io/badge/API-FastAPI-009688.svg)](https://fastapi.tiangolo.com/)
+[![Pydantic](https://img.shields.io/badge/validation-Pydantic%20v2-E92063.svg)](https://docs.pydantic.dev/)
 [![Ruff](https://img.shields.io/badge/lint-ruff-E6001A.svg)](https://docs.astral.sh/ruff/)
 [![Black](https://img.shields.io/badge/format-black-000000.svg)](https://github.com/psf/black)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **ML Production Project** is a production-ready **binary classification** application that predicts whether a breast tumor is **malignant** or **benign** from 30 cytological measurements. The project began as an experimentation notebook (`notebooks/01_exploration.ipynb`) and was refactored into a clean, reproducible Python package: environment-driven configuration, structured logging, a leakage-safe scikit-learn pipeline saved with joblib, and a `train` / `predict` CLI that serves the saved artifact without retraining.
+
+**Assignment 02** extends the same project — same dataset, same fitted pipeline, same repository — with a **FastAPI service** that exposes the saved model over HTTP. Requests are validated by **Pydantic**, so malformed or out-of-range inputs are rejected before they ever reach the model, and the model is loaded once and reused rather than retrained per request.
 
 ---
 
@@ -24,13 +28,19 @@
 - `SMOTETomek` rebalances the 63/37 class imbalance (benign/malignant) inside the training fold only.
 
 ### ⚙️ 3. Config-Driven Train / Predict CLI
-- Every runtime setting (dataset path, model artifact path, log level, environment, test size, random seed) is read from environment variables via `config.py` — nothing is hardcoded.
+- Every runtime setting (dataset path, model artifact path, log level, environment, test size, random seed) is read from environment variables into a single frozen `Settings` dataclass (`production_app/config.py`), exposed as `settings` — nothing is hardcoded.
 - `uv run run.py train` fits, evaluates, saves the pipeline, and verifies the save/reload roundtrip.
 - `uv run run.py predict` loads the saved artifact and predicts — **no retraining**, ever.
 
 ### 🧰 4. Reproducible & Code-Quality Enforced
 - **uv** manages Python 3.14, dependencies, and the lockfile (`uv.lock` committed) — one `uv sync` reproduces the exact environment.
 - **Ruff**, **Black**, and **pre-commit** hooks are configured and passing; all operational events go through `logging` (no `print`).
+
+### 🌐 5. Validated HTTP API (Assignment 02)
+- `production_app/api.py` exposes `GET /health` and `POST /predict`; the endpoints stay thin and delegate all ML work to `model_service.py`.
+- `production_app/schemas.py` declares the 30 required features as typed, non-negative Pydantic fields, plus the response contract — invalid input never reaches the model.
+- `config.py` centralizes every setting in one frozen `@dataclass` (`settings`), still populated from `.env`.
+- Failures are controlled: bad input → `422`, unloadable artifact → `503`, unexpected errors → `500` with a generic message (no stack traces, paths or secrets ever reach the client).
 
 ---
 
@@ -100,6 +110,10 @@ One false positive and two false negatives out of 114 test samples — recall on
 ### Code Quality
 - Ruff (lint), Black (format), pre-commit hooks
 
+### API (Assignment 02)
+- **FastAPI** + **Uvicorn** (HTTP service, auto-generated OpenAPI docs at `/docs`)
+- **Pydantic v2** (request/response validation and typed schemas)
+
 ---
 
 ## 🚀 Getting Started
@@ -142,6 +156,8 @@ RANDOM_STATE=42
 | `TEST_SIZE` | `0.2` | Test fraction of the split |
 | `RANDOM_STATE` | `42` | Seed for split + SMOTETomek |
 
+These values are read once at import into a single frozen `Settings` dataclass (`production_app/config.py`) and consumed everywhere as `settings` (e.g. `settings.model_path`).
+
 ### 4. Train
 ```bash
 uv run run.py train
@@ -158,6 +174,150 @@ uv run run.py predict --input path/to/data.csv
 ```
 Prediction loads the saved pipeline and runs inference — **no retraining**.
 
+### 6. Serve the API
+```bash
+uv run uvicorn production_app.api:app --port 8000   # Ctrl+C to stop
+```
+Swagger UI: <http://127.0.0.1:8000/docs>. Full endpoint contract, examples and troubleshooting: [Assignment 02 — FastAPI Service](#-assignment-02--fastapi-service).
+
+---
+
+## 🌐 Assignment 02 — FastAPI Service
+
+Assignment 02 extends **this same repository**. It adds a validated HTTP layer in front of the pipeline that Task 01 already fitted and saved: nothing is retrained or refitted inside a request.
+
+### What Assignment 02 adds
+
+| Item | Status | Purpose |
+|------|--------|---------|
+| `production_app/schemas.py` | **New** | Pydantic request/response models (30 features, class output) |
+| `production_app/api.py` | **New** | FastAPI app implementing `/health` and `/predict` |
+| `production_app/model_service.py` | Extended | `load_model()` now caches the artifact — loaded once, reused per request |
+| `production_app/config.py` | Extended | All settings live in one frozen `Settings` dataclass |
+| `pyproject.toml` / `uv.lock` | Updated | `fastapi` + `uvicorn[standard]` added with uv |
+| Task 01 modules, dataset, CLI, notebook | Unchanged | Same features, order, labels, split, and saved artifact |
+
+### Request flow
+
+```mermaid
+graph LR
+    A[HTTP/JSON request] --> B[FastAPI endpoint]
+    B --> C[Pydantic validation]
+    C -->|invalid| D[422 JSON error]
+    C -->|valid| E[Saved fitted pipeline]
+    E --> F[Structured JSON response]
+    B -.->|artifact unavailable| G[503 controlled error]
+```
+
+1. Uvicorn routes the request to `predict_endpoint` in `api.py`.
+2. FastAPI parses the body into `PredictRequest` (`schemas.py`): the 30 Task 01 features, all required, typed as `float` and constrained to `>= 0`. Missing, non-numeric, or negative values get a `422` — the pipeline is never called.
+3. `PredictRequest.to_frame()` builds a one-row DataFrame in the exact column order the artifact was fitted on; `model_service.predict()` runs inference through the fitted preprocessing (sampler skipped, scaler reused — no refitting).
+4. The endpoint answers `200` with the predicted class, its readable label, and the malignant probability.
+5. Model access goes through `model_service.load_model()`, which is cached with `lru_cache`: the joblib artifact is read once per process. A missing or corrupt artifact becomes a controlled `503`; unexpected errors become a generic `500`. Clients never see stack traces, filesystem paths or configuration values.
+
+### Running the API
+
+```bash
+# 1. Install/refresh dependencies (adds fastapi + uvicorn)
+uv sync
+
+# 2. Ensure the saved artifact exists (already committed; this regenerates it if missing)
+uv run run.py train
+
+# 3. Start the service, then stop it with Ctrl+C
+uv run uvicorn production_app.api:app --port 8000
+
+# 4. Auto-generated documentation
+#    http://127.0.0.1:8000/docs    -> Swagger UI
+#    http://127.0.0.1:8000/redoc   -> ReDoc
+#    http://127.0.0.1:8000/openapi.json
+```
+
+### `GET /health`
+
+Reports whether the service can actually load its model artifact.
+
+```bash
+curl -i http://127.0.0.1:8000/health
+```
+
+```json
+HTTP/1.1 200 OK
+{"status": "ok", "model_loaded": true, "detail": null}
+```
+
+| Situation | Status | Body |
+|-----------|--------|------|
+| Artifact loads | `200` | `{"status": "ok", "model_loaded": true, "detail": null}` |
+| Artifact missing or unreadable | `503` | `{"status": "unhealthy", "model_loaded": false, "detail": "model artifact unavailable"}` |
+
+### `POST /predict`
+
+Accepts **one** observation with the 30 Task 01 features. Every field below is required; all are non-negative numbers.
+
+```bash
+curl -X POST http://127.0.0.1:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "radius_mean": 17.99, "texture_mean": 10.38, "perimeter_mean": 122.8,
+    "area_mean": 1001.0, "smoothness_mean": 0.1184, "compactness_mean": 0.2776,
+    "concavity_mean": 0.3001, "concave points_mean": 0.1471, "symmetry_mean": 0.2419,
+    "fractal_dimension_mean": 0.07871, "radius_se": 1.095, "texture_se": 0.9053,
+    "perimeter_se": 8.589, "area_se": 153.4, "smoothness_se": 0.006399,
+    "compactness_se": 0.04904, "concavity_se": 0.05373, "concave points_se": 0.01587,
+    "symmetry_se": 0.03003, "fractal_dimension_se": 0.006193, "radius_worst": 25.38,
+    "texture_worst": 17.33, "perimeter_worst": 184.6, "area_worst": 2019.0,
+    "smoothness_worst": 0.1622, "compactness_worst": 0.6656,
+    "concavity_worst": 0.7119, "concave points_worst": 0.2654,
+    "symmetry_worst": 0.4601, "fractal_dimension_worst": 0.1189
+  }'
+```
+
+```json
+HTTP/1.1 200 OK
+{"prediction": 1, "label": "malignant", "probability": 0.9999999969426683}
+```
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `prediction` | `int` | `0` = benign, `1` = malignant (Task 01 labels) |
+| `label` | `str` | Human-readable class: `benign` or `malignant` |
+| `probability` | `float \| null` | Malignant probability; `null` when the model has no `predict_proba` |
+
+Feature names are exactly the Task 01 dataset columns, in this order (the 6 names containing a space must be quoted in JSON):
+
+```text
+radius_mean, texture_mean, perimeter_mean, area_mean, smoothness_mean,
+compactness_mean, concavity_mean, "concave points_mean", symmetry_mean,
+fractal_dimension_mean, radius_se, texture_se, perimeter_se, area_se,
+smoothness_se, compactness_se, concavity_se, "concave points_se", symmetry_se,
+fractal_dimension_se, radius_worst, texture_worst, perimeter_worst, area_worst,
+smoothness_worst, compactness_worst, concavity_worst, "concave points_worst",
+symmetry_worst, fractal_dimension_worst
+```
+
+### Expected validation errors
+
+Malformed input is rejected with `422` before inference, with a machine-readable `detail` array:
+
+| Case | Response |
+|------|----------|
+| Missing feature | `{"detail": [{"type": "missing", "loc": ["body", "fractal_dimension_worst"], "msg": "Field required", ...}]}` |
+| Non-numeric value (`texture_mean: "abc"`) | `{"detail": [{"type": "float_parsing", "loc": ["body", "texture_mean"], "msg": "Input should be a valid number, unable to parse string as a number", ...}]}` |
+| Negative value (`radius_mean: -1`) | `{"detail": [{"type": "greater_than_equal", "loc": ["body", "radius_mean"], "msg": "Input should be greater than or equal to 0", "ctx": {"ge": 0.0}}]}` |
+| Artifact unavailable (any valid request) | `503` `{"detail": "model artifact unavailable"}` |
+
+### Troubleshooting
+
+| Symptom | Cause / fix |
+|---------|-------------|
+| `/health` returns `503` | No artifact at `MODEL_PATH`. Run `uv run run.py train`, or point `MODEL_PATH` at the real file in `.env`. |
+| `422` on a feature you are sure you sent | The 6 columns with a space need the exact dataset spelling: `"concave points_mean"`, `"concave points_se"`, `"concave points_worst"` (underscores are only used in Python). |
+| Predictions look random | Column order/names must match Task 01 — send all 30 features; the schema enforces this. |
+| `Address already in use` | Another process holds the port: `uv run uvicorn production_app.api:app --port 8001`. |
+| Old model still served after retraining | `load_model()` caches per process — restart the API to pick up a newly trained artifact. |
+| `ModuleNotFoundError: fastapi` | Dependencies are stale: `uv sync`. |
+
 ---
 
 ## 🧪 Testing & Verification
@@ -169,6 +329,10 @@ There is no separate test suite; verify the system with these checks:
 3. Failure path: delete or rename `models/model_pipeline.joblib`, then `uv run run.py predict` — logs `Model artifact not found` and exits with code 1.
 4. Code quality: `uv run ruff check .`, `uv run black --check .`, and `uv run pre-commit run --all-files` all pass.
 5. Reproducibility: run `train` twice — identical metrics both times (everything is seeded).
+6. API happy path: `uv run uvicorn production_app.api:app --port 8000`, then `curl -i http://127.0.0.1:8000/health` → `200` `{"status": "ok", "model_loaded": true, ...}`, and a valid `POST /predict` → `200` with `prediction`/`label`/`probability` (Swagger UI at `/docs` works too).
+7. API validation: `POST /predict` with a missing feature, a non-numeric value (`"abc"`) or a negative value → `422` with a `detail` array before any inference happens.
+8. API failure path: rename `models/model_pipeline.joblib`, restart the API, then `GET /health` and a valid `POST /predict` → `503` with a controlled body and no stack trace or local path disclosed. Restore the artifact afterwards.
+9. Artifact integrity: the schema contract was checked against the fitted pipeline — `list(PredictRequest(**row).to_frame().columns) == list(model.feature_names_in_)`, and a known-benign row predicts `benign` while a known-malignant row predicts `malignant`.
 
 ---
 
@@ -182,14 +346,16 @@ ML-Production_Project/
 │       └── breast-cancer.csv       # Breast Cancer Wisconsin dataset (569 x 32)
 ├── production_app/                 # Stage B: production package (source of truth)
 │   ├── __init__.py                 # Package marker
-│   ├── config.py                   # Env-driven settings (paths, seed, log level)
+│   ├── config.py                   # Settings dataclass, populated from .env
 │   ├── logging_config.py           # One shared logging setup + get_logger
 │   ├── data.py                     # Load, validate, feature prep, stratified split
 │   ├── preprocessing.py            # SMOTETomek -> StandardScaler -> LogReg pipeline
 │   ├── training.py                 # Fit with timing + logging
 │   ├── evaluation.py               # Accuracy / precision / recall / F1 + report
-│   ├── model_service.py            # joblib save / load / predict
-│   └── main.py                     # run_training() / run_prediction() orchestration
+│   ├── model_service.py            # joblib save / cached load / predict
+│   ├── main.py                     # run_training() / run_prediction() orchestration
+│   ├── schemas.py                  # NEW (A02): Pydantic request/response validation
+│   └── api.py                      # NEW (A02): FastAPI app - /health, /predict
 ├── models/
 │   ├── model_pipeline.joblib       # Saved fitted pipeline (recreated by `train`)
 │   └── joblib_models/              # Baseline pickles from the notebook

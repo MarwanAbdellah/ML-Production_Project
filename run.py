@@ -2,7 +2,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from production_app import config
+from production_app.config import settings
 from production_app.logging_config import configure_logging, get_logger
 from production_app.main import run_prediction, run_training
 
@@ -20,9 +20,9 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    configure_logging(config.LOG_LEVEL)
+    configure_logging(settings.log_level)
     logger = get_logger(__name__)
-    logger.info("Environment: %s", config.ENVIRONMENT)
+    logger.info("Environment: %s", settings.environment)
 
     try:
         if args.command == "train":
