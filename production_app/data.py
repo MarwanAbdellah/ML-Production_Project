@@ -3,7 +3,7 @@ from pathlib import Path
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
-from production_app import config
+from production_app.config import settings
 from production_app.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -12,7 +12,7 @@ REQUIRED_COLUMNS = {"radius_mean"}
 
 
 def load_dataset(path: Path | None = None) -> pd.DataFrame:
-    path = path or config.DATA_PATH
+    path = path or settings.data_path
     if not path.exists():
         logger.error("Dataset not found: %s", path)
         raise FileNotFoundError(path)
@@ -39,13 +39,13 @@ def split_data(
     y = (df["diagnosis"] == "M").astype(int)
     logger.info(
         "Splitting data: test_size=%s random_state=%s",
-        config.TEST_SIZE,
-        config.RANDOM_STATE,
+        settings.test_size,
+        settings.random_state,
     )
     return train_test_split(
         X,
         y,
-        test_size=config.TEST_SIZE,
-        random_state=config.RANDOM_STATE,
+        test_size=settings.test_size,
+        random_state=settings.random_state,
         stratify=y,
     )
