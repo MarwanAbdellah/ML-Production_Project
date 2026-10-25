@@ -22,7 +22,10 @@ CMD ["uvicorn", "production_app.api:app", "--host", "0.0.0.0", "--port", "8000"]
 
 FROM base AS ui
 RUN uv sync --frozen --no-dev --group ui --no-install-project
+COPY production_app ./production_app
 COPY streamlit_app.py ./
+# the UI imports the shared schema, so fail the build instead of the browser
+RUN python -c "import production_app.schemas"
 EXPOSE 8501
 CMD ["streamlit", "run", "streamlit_app.py", \
      "--server.address=0.0.0.0", "--server.port=8501", "--server.headless=true"]
