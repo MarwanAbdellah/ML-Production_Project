@@ -33,12 +33,12 @@
 - `uv run run.py predict` loads the saved artifact and predicts — **no retraining**, ever.
 
 ### 🧰 4. Reproducible & Code-Quality Enforced
-- **uv** manages Python 3.14, dependencies, and the lockfile (`uv.lock` committed) — one `uv sync` reproduces the exact environment.
+- **uv** manages Python 3.14, dependencies, and the lockfile (`uv.lock` committed) — `uv sync` reproduces the exact app environment, and `uv sync --group experiments` adds the notebook tooling.
 - **Ruff**, **Black**, and **pre-commit** hooks are configured and passing; all operational events go through `logging` (no `print`).
 
 ### 🌐 5. Validated HTTP API (Assignment 02)
 - `production_app/api.py` exposes `GET /health` and `POST /predict`; the endpoints stay thin and delegate all ML work to `model_service.py`.
-- `production_app/schemas.py` declares the 30 required features as typed, non-negative Pydantic fields, plus the response contract — invalid input never reaches the model.
+- `production_app/schemas.py` declares the 30 required features as one reusable constrained type — non-negative and finite (`allow_inf_nan=False`) — with `extra="forbid"`, plus the response contract; negative, non-finite, missing, or unexpected input never reaches the model.
 - `config.py` centralizes every setting in one frozen `@dataclass` (`settings`), still populated from `.env`.
 - Failures are controlled: bad input → `422`, unloadable artifact → `503`, unexpected errors → `500` with a generic message (no stack traces, paths or secrets ever reach the client).
 
@@ -104,8 +104,9 @@ One false positive and two false negatives out of 114 test samples — recall on
 - **Serialization**: joblib (fitted pipeline artifact)
 - **Data**: pandas, numpy — [Breast Cancer Wisconsin (Diagnostic)](https://www.kaggle.com/datasets/yasserh/breast-cancer-dataset), 569 rows × 32 columns, no missing values
 
-### Experimentation (notebook only)
-- Jupyter / ipykernel, Plotly, Seaborn, Matplotlib, XGBoost (model comparison)
+### Experimentation (notebook only — `uv sync --group experiments`)
+- Jupyter / ipykernel, nbconvert, Plotly, Seaborn, Matplotlib, XGBoost (model comparison)
+- None of these are imported by `production_app/` or `run.py`; the production app installs and runs without them.
 
 ### Code Quality
 - Ruff (lint), Black (format), pre-commit hooks
@@ -131,6 +132,10 @@ cd ML-Production_Project
 ### 2. Install Dependencies
 ```bash
 uv sync
+```
+That is everything the training CLI and the API need. Only if you want to re-run the exploration notebook, add the experimentation group:
+```bash
+uv sync --group experiments
 ```
 
 ### 3. Configure Environment
@@ -330,7 +335,7 @@ There is no separate test suite; verify the system with these checks:
 4. Code quality: `uv run ruff check .`, `uv run black --check .`, and `uv run pre-commit run --all-files` all pass.
 5. Reproducibility: run `train` twice — identical metrics both times (everything is seeded).
 6. API happy path: `uv run uvicorn production_app.api:app --port 8000`, then `curl -i http://127.0.0.1:8000/health` → `200` `{"status": "ok", "model_loaded": true, ...}`, and a valid `POST /predict` → `200` with `prediction`/`label`/`probability` (Swagger UI at `/docs` works too).
-7. API validation: `POST /predict` with a missing feature, a non-numeric value (`"abc"`) or a negative value → `422` with a `detail` array before any inference happens.
+7. API validation: `POST /predict` with a missing feature, a non-numeric value (`"abc"`), a negative value, a non-finite value (`NaN` / `Infinity`), or an unexpected extra feature → `422` with a `detail` array before any inference happens.
 8. API failure path: rename `models/model_pipeline.joblib`, restart the API, then `GET /health` and a valid `POST /predict` → `503` with a controlled body and no stack trace or local path disclosed. Restore the artifact afterwards.
 9. Artifact integrity: the schema contract was checked against the fitted pipeline — `list(PredictRequest(**row).to_frame().columns) == list(model.feature_names_in_)`, and a known-benign row predicts `benign` while a known-malignant row predicts `malignant`.
 
@@ -358,7 +363,7 @@ ML-Production_Project/
 │   └── api.py                      # NEW (A02): FastAPI app - /health, /predict
 ├── models/
 │   ├── model_pipeline.joblib       # Saved fitted pipeline (recreated by `train`)
-│   └── joblib_models/              # Baseline pickles from the notebook
+│   └── joblib_models/              # Baseline pickles from the notebook (not served)
 ├── run.py                          # CLI entry point: train | predict [--input]
 ├── .env.example                    # Environment variable template
 ├── .gitignore                      # Ignores .venv, .env, caches, checkpoints

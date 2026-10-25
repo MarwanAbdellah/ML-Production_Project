@@ -1,6 +1,7 @@
 """FastAPI application: HTTP/JSON -> Pydantic validation -> saved pipeline -> JSON."""
 
 from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from imblearn.pipeline import Pipeline
 
@@ -27,6 +28,21 @@ app = FastAPI(
     ),
     version="0.1.0",
 )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    # Echoing `input` back would resend NaN/inf (not JSON-serialisable, turns a
+    # 422 into a 500) and reflect the whole payload; keep type/loc/msg only.
+    errors = [
+        {"type": e["type"], "loc": list(e["loc"]), "msg": e["msg"]}
+        for e in exc.errors()
+    ]
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, content={"detail": errors}
+    )
 
 
 @app.exception_handler(Exception)

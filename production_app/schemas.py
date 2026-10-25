@@ -1,6 +1,6 @@
 """Pydantic request/response schemas for the prediction API."""
 
-from typing import Literal
+from typing import Annotated, Literal
 
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
@@ -43,42 +43,46 @@ FEATURES = (
 
 LABELS = {0: "benign", 1: "malignant"}
 
+# Every measurement is a non-negative, finite number: NaN and infinity must
+# never reach the pipeline.
+FeatureValue = Annotated[float, Field(ge=0, allow_inf_nan=False)]
+
 
 class PredictRequest(BaseModel):
     """One observation: the 30 cytological measurements of a single tumor."""
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
-    radius_mean: float = Field(..., ge=0)
-    texture_mean: float = Field(..., ge=0)
-    perimeter_mean: float = Field(..., ge=0)
-    area_mean: float = Field(..., ge=0)
-    smoothness_mean: float = Field(..., ge=0)
-    compactness_mean: float = Field(..., ge=0)
-    concavity_mean: float = Field(..., ge=0)
-    concave_points_mean: float = Field(..., ge=0, alias="concave points_mean")
-    symmetry_mean: float = Field(..., ge=0)
-    fractal_dimension_mean: float = Field(..., ge=0)
-    radius_se: float = Field(..., ge=0)
-    texture_se: float = Field(..., ge=0)
-    perimeter_se: float = Field(..., ge=0)
-    area_se: float = Field(..., ge=0)
-    smoothness_se: float = Field(..., ge=0)
-    compactness_se: float = Field(..., ge=0)
-    concavity_se: float = Field(..., ge=0)
-    concave_points_se: float = Field(..., ge=0, alias="concave points_se")
-    symmetry_se: float = Field(..., ge=0)
-    fractal_dimension_se: float = Field(..., ge=0)
-    radius_worst: float = Field(..., ge=0)
-    texture_worst: float = Field(..., ge=0)
-    perimeter_worst: float = Field(..., ge=0)
-    area_worst: float = Field(..., ge=0)
-    smoothness_worst: float = Field(..., ge=0)
-    compactness_worst: float = Field(..., ge=0)
-    concavity_worst: float = Field(..., ge=0)
-    concave_points_worst: float = Field(..., ge=0, alias="concave points_worst")
-    symmetry_worst: float = Field(..., ge=0)
-    fractal_dimension_worst: float = Field(..., ge=0)
+    radius_mean: FeatureValue
+    texture_mean: FeatureValue
+    perimeter_mean: FeatureValue
+    area_mean: FeatureValue
+    smoothness_mean: FeatureValue
+    compactness_mean: FeatureValue
+    concavity_mean: FeatureValue
+    concave_points_mean: FeatureValue = Field(alias="concave points_mean")
+    symmetry_mean: FeatureValue
+    fractal_dimension_mean: FeatureValue
+    radius_se: FeatureValue
+    texture_se: FeatureValue
+    perimeter_se: FeatureValue
+    area_se: FeatureValue
+    smoothness_se: FeatureValue
+    compactness_se: FeatureValue
+    concavity_se: FeatureValue
+    concave_points_se: FeatureValue = Field(alias="concave points_se")
+    symmetry_se: FeatureValue
+    fractal_dimension_se: FeatureValue
+    radius_worst: FeatureValue
+    texture_worst: FeatureValue
+    perimeter_worst: FeatureValue
+    area_worst: FeatureValue
+    smoothness_worst: FeatureValue
+    compactness_worst: FeatureValue
+    concavity_worst: FeatureValue
+    concave_points_worst: FeatureValue = Field(alias="concave points_worst")
+    symmetry_worst: FeatureValue
+    fractal_dimension_worst: FeatureValue
 
     def to_frame(self) -> pd.DataFrame:
         """One-row frame in the exact column order the pipeline expects."""
