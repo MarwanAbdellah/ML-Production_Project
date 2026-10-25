@@ -1,3 +1,4 @@
+import json
 from functools import lru_cache
 
 import joblib
@@ -29,3 +30,20 @@ def load_model() -> Pipeline:
 
 def predict(pipeline: Pipeline, X: pd.DataFrame) -> np.ndarray:
     return pipeline.predict(X)
+
+
+def save_features(features: list[str]) -> None:
+    settings.selected_features_path.parent.mkdir(parents=True, exist_ok=True)
+    settings.selected_features_path.write_text(
+        json.dumps(features, indent=2) + "\n", encoding="utf-8"
+    )
+    logger.info("Saved %d selected features", len(features))
+
+
+@lru_cache(maxsize=1)
+def load_features() -> list[str]:
+    """The exact selected-feature names and order the pipeline was fitted on."""
+    if not settings.selected_features_path.exists():
+        logger.error("Feature list not found: %s", settings.selected_features_path)
+        raise FileNotFoundError(settings.selected_features_path)
+    return json.loads(settings.selected_features_path.read_text(encoding="utf-8"))

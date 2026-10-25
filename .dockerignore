@@ -1,0 +1,17 @@
+.venv
+.git
+.gitignore
+.env
+.ruff_cache
+.black_cache
+.ipynb_checkpoints
+**/__pycache__
+**/*.pyc
+notebooks
+tests
+models/joblib_models
+*.md
+LICENSE
+docker-compose.yml
+Dockerfile
+.dockerignore

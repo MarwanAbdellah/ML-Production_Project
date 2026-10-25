@@ -18,7 +18,9 @@ dependencies = [
 [dependency-groups]
 dev = [
     "black>=26.10.0",
+    "httpx2>=0.1.0",
     "pre-commit>=4.6.2",
+    "pytest>=8.4.2",
     "ruff>=0.16.10",
 ]
 # Notebook-only tooling: uv sync --group experiments
@@ -31,6 +33,15 @@ experiments = [
     "seaborn>=0.13.2",
     "xgboost>=3.4.1",
 ]
+# Streamlit client only: uv sync --group ui (never installed in the API image)
+ui = [
+    "requests>=2.32.5",
+    "streamlit>=1.50.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
 
 [tool.black]
 line-length = 88

@@ -13,6 +13,7 @@ class Settings:
 
     data_path: Path = Path("notebooks/kaggle/breast-cancer.csv")
     model_path: Path = Path("models/model_pipeline.joblib")
+    selected_features_path: Path = Path("models/selected_features.json")
     log_level: str = "INFO"
     environment: str = "development"
     test_size: float = 0.2
@@ -25,6 +26,11 @@ class Settings:
         return cls(
             data_path=Path(os.getenv("DATA_PATH", str(defaults.data_path))),
             model_path=Path(os.getenv("MODEL_PATH", str(defaults.model_path))),
+            selected_features_path=Path(
+                os.getenv(
+                    "SELECTED_FEATURES_PATH", str(defaults.selected_features_path)
+                )
+            ),
             log_level=os.getenv("LOG_LEVEL", defaults.log_level),
             environment=os.getenv("ENVIRONMENT", defaults.environment),
             test_size=float(os.getenv("TEST_SIZE", defaults.test_size)),
